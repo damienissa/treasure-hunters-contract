@@ -1,4 +1,4 @@
-import { toNano } from '@ton/core';
+import { fromNano, toNano } from '@ton/core';
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import '@ton/test-utils';
 import { TreasureHunters } from '../wrappers/TreasureHunters';
@@ -8,13 +8,17 @@ describe('TreasureHunters - Full Expedition', () => {
     let deployer: SandboxContract<TreasuryContract>;
     let treasureHunters: SandboxContract<TreasureHunters>;
     const players: SandboxContract<TreasuryContract>[] = [];
-    const numberOfPlayers = 20; // Total players for the expedition
+    const numberOfPlayers = 1000; // Total players for the expedition
     const ticketPrice = '10'; // Ticket price in TON
+    const discountTicketPrice = '5'; // Discount ticket price in TON
+    var iterations = 0;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
         deployer = await blockchain.treasury('deployer');
-        treasureHunters = blockchain.openContract(await TreasureHunters.fromInit(deployer.address));
+        console.log(`Deployer Balance before the game: ${await deployer.getBalance()}`);
+        treasureHunters = blockchain.openContract(await TreasureHunters.fromInit());
+        iterations++;
 
         // Deploy the contract
         const deployResult = await treasureHunters.send(
@@ -28,22 +32,23 @@ describe('TreasureHunters - Full Expedition', () => {
             }
         );
 
-        // expect(deployResult.transactions).toHaveTransaction({
-        //     from: deployer.address,
-        //     to: treasureHunters.address,
-        //     deploy: true,
-        //     success: true,
-        // });
+        expect(deployResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: treasureHunters.address,
+            deploy: true,
+            success: true,
+        });
 
         // Create 20 players
         for (let i = 0; i < numberOfPlayers; i++) {
-            players.push(await blockchain.treasury(`player_${i}`));
+            players.push(await blockchain.treasury(`player_${i}_${iterations}`));
         }
     });
 
     it('should buy all tickets and print balances', async () => {
-
-        let totalFees = BigInt(0);
+        const deployerBalanceBefore = await deployer.getBalance() - 1000000000000000n;
+        console.log(`Deployer Balance before the game: ${fromNano(deployerBalanceBefore)} TON`);
+        console.log(`Deployer Balance before the game: ${Number(deployerBalanceBefore) / 1000000000 * 5.5} USDT`);
 
         for (const player of players) {
             const buyResult = await treasureHunters.send(
@@ -55,20 +60,32 @@ describe('TreasureHunters - Full Expedition', () => {
                     $$type: 'BuyTicket',
                 }
             );
-            totalFees += buyResult.transactions[0].totalFees.coins;
-            console.log(`Player ${player.address.toString()} bought a ticket, fees: ${buyResult.transactions}`);
+
+            expect(buyResult.transactions).toHaveTransaction({
+                from: player.address,
+                to: treasureHunters.address,
+                success: true,
+            });
         }
 
-        const expectedBalance = toNano((numberOfPlayers * parseInt(ticketPrice)).toString());
-        const adjustedExpectedBalance = expectedBalance - totalFees;
+        const withdrawalResult = await treasureHunters.send(
+            deployer.getSender(),
+            {
+                value: toNano('0.05'),
+            },
+            {
+                $$type: 'Withdraw',
+            }
+        );
 
-        expect(0).toEqual(adjustedExpectedBalance);
+        expect(withdrawalResult.transactions).toHaveTransaction({
+            from: treasureHunters.address,
+            to: deployer.address,
+            success: true,
+        });
 
-        // Print all player balances
-        console.log('Balances after expedition:');
-        for (const player of players) {
-            const playerBalance = await player.getBalance();
-            // console.log(`Player ${player.address.toString()}: ${fromNano(playerBalance)} TON`);
-        }
+        const deployerBalance = await deployer.getBalance() - 1000000000000000n;
+        console.log(`Deployer Balance after the game: ${fromNano(deployerBalance)} TON`);
+        console.log(`Deployer Balance after the game: ${Number(deployerBalance) / 1000000000 * 5.5} USDT`);
     });
 });
