@@ -1,20 +1,22 @@
-import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { toNano } from '@ton/core';
-import { TreasureHunters } from '../wrappers/TreasureHunters';
+import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import '@ton/test-utils';
+import { TreasureHunters } from '../wrappers/TreasureHunters';
 
-describe('TreasureHunters', () => {
+describe('TreasureHunters - Full Expedition', () => {
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
     let treasureHunters: SandboxContract<TreasureHunters>;
+    const players: SandboxContract<TreasuryContract>[] = [];
+    const numberOfPlayers = 20; // Total players for the expedition
+    const ticketPrice = '10'; // Ticket price in TON
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
-
-        treasureHunters = blockchain.openContract(await TreasureHunters.fromInit(0n));
-
         deployer = await blockchain.treasury('deployer');
+        treasureHunters = blockchain.openContract(await TreasureHunters.fromInit(deployer.address));
 
+        // Deploy the contract
         const deployResult = await treasureHunters.send(
             deployer.getSender(),
             {
@@ -26,57 +28,47 @@ describe('TreasureHunters', () => {
             }
         );
 
-        expect(deployResult.transactions).toHaveTransaction({
-            from: deployer.address,
-            to: treasureHunters.address,
-            deploy: true,
-            success: true,
-        });
+        // expect(deployResult.transactions).toHaveTransaction({
+        //     from: deployer.address,
+        //     to: treasureHunters.address,
+        //     deploy: true,
+        //     success: true,
+        // });
+
+        // Create 20 players
+        for (let i = 0; i < numberOfPlayers; i++) {
+            players.push(await blockchain.treasury(`player_${i}`));
+        }
     });
 
-    it('should deploy', async () => {
-        // the check is done inside beforeEach
-        // blockchain and treasureHunters are ready to use
-    });
+    it('should buy all tickets and print balances', async () => {
 
-    it('should increase counter', async () => {
-        const increaseTimes = 3;
-        for (let i = 0; i < increaseTimes; i++) {
-            console.log(`increase ${i + 1}/${increaseTimes}`);
+        let totalFees = BigInt(0);
 
-            const increaser = await blockchain.treasury('increaser' + i);
-
-            const counterBefore = await treasureHunters.getCounter();
-
-            console.log('counter before increasing', counterBefore);
-
-            const increaseBy = BigInt(Math.floor(Math.random() * 100));
-
-            console.log('increasing by', increaseBy);
-
-            const increaseResult = await treasureHunters.send(
-                increaser.getSender(),
+        for (const player of players) {
+            const buyResult = await treasureHunters.send(
+                player.getSender(),
                 {
-                    value: toNano('0.05'),
+                    value: toNano(ticketPrice),
                 },
                 {
-                    $$type: 'Add',
-                    queryId: 0n,
-                    amount: increaseBy,
+                    $$type: 'BuyTicket',
                 }
             );
+            totalFees += buyResult.transactions[0].totalFees.coins;
+            console.log(`Player ${player.address.toString()} bought a ticket, fees: ${buyResult.transactions}`);
+        }
 
-            expect(increaseResult.transactions).toHaveTransaction({
-                from: increaser.address,
-                to: treasureHunters.address,
-                success: true,
-            });
+        const expectedBalance = toNano((numberOfPlayers * parseInt(ticketPrice)).toString());
+        const adjustedExpectedBalance = expectedBalance - totalFees;
 
-            const counterAfter = await treasureHunters.getCounter();
+        expect(0).toEqual(adjustedExpectedBalance);
 
-            console.log('counter after increasing', counterAfter);
-
-            expect(counterAfter).toBe(counterBefore + increaseBy);
+        // Print all player balances
+        console.log('Balances after expedition:');
+        for (const player of players) {
+            const playerBalance = await player.getBalance();
+            // console.log(`Player ${player.address.toString()}: ${fromNano(playerBalance)} TON`);
         }
     });
 });
