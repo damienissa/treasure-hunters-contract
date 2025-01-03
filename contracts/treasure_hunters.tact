@@ -1,6 +1,5 @@
 import "@stdlib/deploy";
 import "@stdlib/ownable";
-
 import "./history.tact";
 import "./config.tact";
 import "./messages.tact";
@@ -11,9 +10,7 @@ contract TreasureHunters with Deployable, Ownable {
     config: Config;
     currentExpedition: CurrentExpedition;
     historicalData: HistoricalData;
-    
-    init(config: Config) {
-        
+    init(config: Config){
         self.owner = context().sender;
         self.historicalData = HistoricalData{
             playedAtLeastOnce: emptyMap(),
@@ -21,39 +18,31 @@ contract TreasureHunters with Deployable, Ownable {
             expeditionLogLength: 0
         };
         self.config = config;
-        self.currentExpedition = CurrentExpedition{
-            players: emptyMap(),
-            playersLength: 0
-        };
+        self.currentExpedition = CurrentExpedition{players: emptyMap(), playersLength: 0};
     }
 
-    receive(msg: BuyFirstTicketAfterReferral) {
-        require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
+    receive(msg: BuyFirstTicketAfterReferral){
         let messageContext = context();
-        if (messageContext.value < self.config.discountTicketPrice) {
-            throw(37)
-        }
+        require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
+        require(messageContext.value >= self.config.discountTicketPrice, "Not enough funds");
         let referrer = msg.referrer;
         let referrerBonus = (self.config.ticketPrice * self.config.referrerBonusPercent) / 100;
-        send(SendParameters{to: referrer, value: referrerBonus, bounce: true, body: "Referral bonus".asComment(),});
+        send(SendParameters{to: referrer, value: referrerBonus, bounce: true, body: "Referral bonus".asComment()});
         self.processTicket();
     }
 
-    receive(msg: BuyTicket) {
-        require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
+    receive(msg: BuyTicket){
         let messageContext = context();
-        if (messageContext.value < self.config.ticketPrice) {
-            throw(37)
-        }
-         
+        require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
+        require(messageContext.value >= self.config.ticketPrice, "Not enough funds");
         self.processTicket();
     }
 
-    receive(msg: Withdraw) {
+    receive(msg: Withdraw){
         self.requireOwner();
         send(SendParameters{to: self.owner, value: myBalance() - ton("1"), bounce: false});
     }
-    
+
     get fun expeditionLog(): map<Int, ExpeditionHistory> {
         return self.historicalData.expeditionLog;
     }
@@ -73,21 +62,21 @@ contract TreasureHunters with Deployable, Ownable {
         if (self.currentExpedition.playersLength == self.config.numberOfPlayers) {
             let winners = self.getWinners();
             foreach (address, prize in winners) {
-                send(SendParameters{to: address, bounce: true, value: prize, mode: SendRemainingValue + SendIgnoreErrors});
+                send(SendParameters{
+                        to: address,
+                        bounce: true,
+                        value: prize,
+                        mode: SendRemainingValue + SendIgnoreErrors
+                    }
+                );
             }
-        
-            self.currentExpedition = CurrentExpedition{
-                players: emptyMap(),
-                playersLength: 0
-            };
+            self.currentExpedition = CurrentExpedition{players: emptyMap(), playersLength: 0};
         }
     }
 
     fun selectRandomPlayers(count: Int): map<Int, Address> {
-
         let copyLength: Int = self.currentExpedition.playersLength;
         let copyPlayers: map<Int, Address> = self.currentExpedition.players;
-
         let selectedPlayers: map<Int, Address> = emptyMap();
         let selectedCount: Int = 0;
         while (selectedCount < count) {
@@ -100,13 +89,11 @@ contract TreasureHunters with Deployable, Ownable {
                 copyLength -= 1;
             }
         }
-
         self.historicalData.saveToHistory(selectedPlayers, copyPlayers);
         return selectedPlayers;
-    }   
+    }
 
     fun getWinners(): map<Address, Int> {
-
         let winnerMap: map<Address, Int> = emptyMap();
         let randomPlayers: map<Int, Address> = self.selectRandomPlayers(5);
         let prizes: map<Int, Int> = emptyMap();
