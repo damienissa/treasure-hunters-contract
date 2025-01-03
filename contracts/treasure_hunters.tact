@@ -27,6 +27,18 @@ contract TreasureHunters with Deployable, Ownable {
         };
     }
 
+    receive(msg: BuyFirstTicketAfterReferral) {
+        require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
+        let messageContext = context();
+        if (messageContext.value < self.config.discountTicketPrice) {
+            throw(37)
+        }
+        let referrer = msg.referrer;
+        let referrerBonus = (self.config.ticketPrice * self.config.referrerBonusPercent) / 100;
+        send(SendParameters{to: referrer, value: referrerBonus, bounce: true, body: "Referral bonus".asComment(),});
+        self.processTicket();
+    }
+
     receive(msg: BuyTicket) {
         require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
         let messageContext = context();
@@ -34,20 +46,7 @@ contract TreasureHunters with Deployable, Ownable {
             throw(37)
         }
          
-        let sender = context().sender;
-        self.historicalData.savePlayerPlayedAtLeastOnce(sender);
-        self.currentExpedition.addPlayer(sender);
-        if (self.currentExpedition.playersLength == self.config.numberOfPlayers) {
-            let winners = self.getWinners();
-            foreach (address, prize in winners) {
-                send(SendParameters{to: address, bounce: true, value: prize, mode: SendRemainingValue + SendIgnoreErrors});
-            }
-        
-            self.currentExpedition = CurrentExpedition{
-                players: emptyMap(),
-                playersLength: 0
-            };
-        }
+        self.processTicket();
     }
 
     receive(msg: Withdraw) {
@@ -65,6 +64,23 @@ contract TreasureHunters with Deployable, Ownable {
 
     get fun numberOfCurrentPlayers(): Int {
         return self.currentExpedition.playersLength;
+    }
+
+    fun processTicket() {
+        let sender = context().sender;
+        self.historicalData.savePlayerPlayedAtLeastOnce(sender);
+        self.currentExpedition.addPlayer(sender);
+        if (self.currentExpedition.playersLength == self.config.numberOfPlayers) {
+            let winners = self.getWinners();
+            foreach (address, prize in winners) {
+                send(SendParameters{to: address, bounce: true, value: prize, mode: SendRemainingValue + SendIgnoreErrors});
+            }
+        
+            self.currentExpedition = CurrentExpedition{
+                players: emptyMap(),
+                playersLength: 0
+            };
+        }
     }
 
     fun selectRandomPlayers(count: Int): map<Int, Address> {
