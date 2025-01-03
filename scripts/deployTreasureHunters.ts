@@ -1,9 +1,9 @@
+import { NetworkProvider } from '@ton/blueprint';
 import { toNano } from '@ton/core';
 import { TreasureHunters } from '../wrappers/TreasureHunters';
-import { NetworkProvider } from '@ton/blueprint';
 
 export async function run(provider: NetworkProvider) {
-    const treasureHunters = provider.open(await TreasureHunters.fromInit(BigInt(Math.floor(Math.random() * 10000))));
+    const treasureHunters = provider.open(await TreasureHunters.fromInit());
 
     await treasureHunters.send(
         provider.sender(),
@@ -18,5 +18,5 @@ export async function run(provider: NetworkProvider) {
 
     await provider.waitForDeploy(treasureHunters.address);
 
-    console.log('ID', await treasureHunters.getId());
+    console.log('ID', await treasureHunters.getContractBalance());
 }

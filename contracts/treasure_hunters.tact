@@ -2,9 +2,6 @@ import "@stdlib/deploy";
 import "@stdlib/ownable";
 message BuyTicket {
 }
-message BuyTicketWithDiscount {
-    referrer: Address;
-}
 
 message Withdraw {}
 
