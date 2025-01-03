@@ -3,7 +3,7 @@ import { toNano } from '@ton/core';
 import { TreasureHunters } from '../wrappers/TreasureHunters';
 
 export async function run(provider: NetworkProvider) {
-    const treasureHunters = provider.open(await TreasureHunters.fromInit());
+    const treasureHunters = provider.open(await TreasureHunters.fromInit({ $$type: 'Config', numberOfPlayers: 20n, ticketPrice: toNano("10"), treasurePercent: 70n, }));
 
     await treasureHunters.send(
         provider.sender(),

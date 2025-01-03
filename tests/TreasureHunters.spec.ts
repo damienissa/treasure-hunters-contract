@@ -8,16 +8,17 @@ describe('TreasureHunters - Full Expedition', () => {
     let deployer: SandboxContract<TreasuryContract>;
     let treasureHunters: SandboxContract<TreasureHunters>;
     const players: SandboxContract<TreasuryContract>[] = [];
-    const numberOfPlayers = 1000; // Total players for the expedition
-    const ticketPrice = '10'; // Ticket price in TON
-    const discountTicketPrice = '5'; // Discount ticket price in TON
+    const numberOfPlayers = 100; // Total players for the expedition
+    const playersPerExpedition = 20n; // Players per expedition
+    const ticketPrice = toNano('10'); // Ticket price in TON
+    const treasurePercent = 70n; // Treasure percent
     var iterations = 0;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
         deployer = await blockchain.treasury('deployer');
         console.log(`Deployer Balance before the game: ${await deployer.getBalance()}`);
-        treasureHunters = blockchain.openContract(await TreasureHunters.fromInit());
+        treasureHunters = blockchain.openContract(await TreasureHunters.fromInit({ $$type: 'Config', numberOfPlayers: playersPerExpedition, ticketPrice: ticketPrice, treasurePercent: treasurePercent, }));
         iterations++;
 
         // Deploy the contract
@@ -54,7 +55,7 @@ describe('TreasureHunters - Full Expedition', () => {
             const buyResult = await treasureHunters.send(
                 player.getSender(),
                 {
-                    value: toNano(ticketPrice),
+                    value: ticketPrice,
                 },
                 {
                     $$type: 'BuyTicket',
@@ -87,5 +88,7 @@ describe('TreasureHunters - Full Expedition', () => {
         const deployerBalance = await deployer.getBalance() - 1000000000000000n;
         console.log(`Deployer Balance after the game: ${fromNano(deployerBalance)} TON`);
         console.log(`Deployer Balance after the game: ${Number(deployerBalance) / 1000000000 * 5.5} USDT`);
+        expect((await treasureHunters.getExpeditionLog()).values().length).toEqual(numberOfPlayers / 20);
+        console.log(`Game log: `, (await treasureHunters.getExpeditionLog()).values().map((v) => `Loosers: ${v.losers.values()}, Winner: ${v.winners.values()}`));
     });
 });

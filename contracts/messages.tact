@@ -1,0 +1,4 @@
+message BuyTicket {
+}
+message Withdraw {
+}
