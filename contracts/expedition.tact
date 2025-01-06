@@ -72,7 +72,7 @@ contract Expedition with Deployable, Ownable {
         prizes.set(3, (treasure * 7) / 100);
         prizes.set(4, (treasure * 3) / 100);
         foreach (key, value in randomPlayers) {
-            let winner: Winner = Winner{treasure: prizes.get(currentIndex)!!, player: value, claimed: false};
+            let winner: Winner = Winner{treasure: prizes.get(currentIndex)!!, player: value};
             winnerMap.set(currentIndex, winner);
             currentIndex += 1;
         }

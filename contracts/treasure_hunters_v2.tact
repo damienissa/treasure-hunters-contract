@@ -6,8 +6,8 @@ import "./expedition.tact";
 
 contract TreasureHuntersV2 with Deployable, Ownable {
     // Constants
-    const minTonsForStorage: Int = ton("0.01");
-    const gasConsumption: Int = ton("0.01");
+    const minTonsForStorage: Int = ton("1");
+    const gasConsumption: Int = ton("0.5");
     // Variables
     owner: Address;
     config: Config;
@@ -15,6 +15,7 @@ contract TreasureHuntersV2 with Deployable, Ownable {
     currentExpeditionLength: Int;
     expeditionResultsLength: Int;
     expeditionResults: map<Int, ExpeditionResult>;
+    toBeClaimed: map<Address, Int>; // Address -> to treasury
     // Lifecycle
     init(config: Config){
         self.owner = context().sender;
@@ -29,22 +30,16 @@ contract TreasureHuntersV2 with Deployable, Ownable {
         self.requireOwner();
         let contractBalance: Int = myBalance();
         let reservedFundsForClaim: Int = self.reservedFundsForClaim();
-        let toBeWithdrawn: Int = contractBalance - self.minTonsForStorage - self.gasConsumption - reservedFundsForClaim;
-        dump(contractBalance);
-        dump(reservedFundsForClaim);
-        dump(toBeWithdrawn);
-        send(SendParameters{
-                to: self.owner, 
-                value: toBeWithdrawn, 
-                bounce: false, 
-                mode: SendRemainingValue
-        });
+        let toBeWithdrawn: Int =
+            ((contractBalance - self.minTonsForStorage) - self.gasConsumption) - reservedFundsForClaim;
+        send(SendParameters{to: self.owner, value: toBeWithdrawn, bounce: false, mode: SendRemainingValue});
     }
 
-    receive(msg: ExpeditionResultInternal) {
-        let expeditionResult: ExpeditionResult = ExpeditionResult{
-            winners: msg.winners
-        };
+    receive(msg: ExpeditionResultInternal){
+        let expeditionResult: ExpeditionResult = ExpeditionResult{winners: msg.winners};
+        foreach (index, winner in expeditionResult.winners) {
+            self.toBeClaimed.set(winner.player, winner.treasure);
+        }
         self.expeditionResults.set(self.expeditionResultsLength, expeditionResult);
         self.expeditionResultsLength += 1;
         self.currentExpedition = null;
@@ -55,74 +50,51 @@ contract TreasureHuntersV2 with Deployable, Ownable {
         require(context().value >= self.config.ticketPrice, "Not enough funds");
         let sender = context().sender;
         if (self.currentExpedition == null) {
-            
             let address = self.startExpedition(sender);
             self.currentExpedition = address;
         } else {
-             send(SendParameters{
-                to: self.currentExpedition!!, 
-                value: ton("1"),
-                bounce: false,
-                body: AddMemberInternal{
-                    member: sender
-                }.toCell(),
-            });
-        }
 
+            send(SendParameters{
+                    to: self.currentExpedition!!,
+                    value: ton("1"),
+                    bounce: false,
+                    body: AddMemberInternal{member: sender}.toCell()
+                }
+            );
+        }
         self.currentExpeditionLength += 1;
     }
 
-    receive(msg: Claim) {
+    receive(msg: Claim){
         let sender = context().sender;
-        let toBeClaimed: Int = 0;
-        foreach (index, expedition in self.expeditionResults) {
-            foreach (i, winner in expedition.winners) {
-                if (winner.claimed == false && sender == winner.player) {
-                    toBeClaimed += winner.treasure;
-                    winner.claim();
-                }
-            }
-        }
-        send(SendParameters{
-                to: sender, 
-                bounce: true, 
-                value: toBeClaimed, 
-                mode: SendIgnoreErrors, 
-                body: "Claimed".asComment()
-                },
-            );
+        require(self.toBeClaimed.exists(sender), "Only winner can claim");
+        let value: Int = self.toBeClaimed.get(sender)!!;
+        send(SendParameters{to: sender, bounce: true, value: value, mode: SendIgnoreErrors, body: "Claimed".asComment()}
+        );
+        self.toBeClaimed.del(sender);
     }
 
     fun reservedFundsForClaim(): Int {
         let sum: Int = 0;
-        foreach (index, expedition in self.expeditionResults) {
-            foreach (i, winner in expedition.winners) {
-                if (winner.claimed == false) {
-                    sum += winner.treasure;
-                }
-            }
+        foreach (address, treasury in self.toBeClaimed) {
+            sum += treasury;
         }
-
         return sum;
     }
-
 
     fun startExpedition(member: Address): Address {
         let init: StateInit = initOf Expedition(self.expeditionResultsLength, self.config);
         let expeditionAddress: Address = contractAddress(init);
-        
         send(SendParameters{
-                to: expeditionAddress, 
+                to: expeditionAddress,
                 value: ton("1"),
                 bounce: false,
-                body: AddMemberInternal{
-                    member: member,
-                }.toCell(),
+                body: AddMemberInternal{member: member}.toCell(),
                 code: init.code,
                 data: init.data
-            });
-
-            return expeditionAddress;
+            }
+        );
+        return expeditionAddress;
     }
 
     // Getters
