@@ -21,6 +21,11 @@ contract TreasureHunters with Deployable, Ownable {
         self.currentExpedition = CurrentExpedition{players: emptyMap(), playersLength: 0};
     }
 
+    /// Add initial balance of contract
+    receive(){
+        self.requireOwner();
+    }
+
     receive(msg: BuyFirstTicketAfterReferral){
         let messageContext = context();
         require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");

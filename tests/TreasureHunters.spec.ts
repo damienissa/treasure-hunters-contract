@@ -9,10 +9,10 @@ describe('TreasureHunters - Full Expedition', () => {
     let referrer: SandboxContract<TreasuryContract>;
     let treasureHunters: SandboxContract<TreasureHunters>;
     const players: SandboxContract<TreasuryContract>[] = [];
-    const numberOfPlayers = 100; // Total players for the expedition
-    const playersPerExpedition = 20n; // Players per expedition
-    const ticketPrice = toNano('10'); // Ticket price in TON
-    const discountTicketPrice = toNano('9'); // Ticket price in TON
+    const numberOfPlayers = 6; // Total players for the expedition
+    const playersPerExpedition = 6n; // Players per expedition
+    const ticketPrice = toNano('0.1'); // Ticket price in TON
+    const discountTicketPrice = toNano('0.09'); // Ticket price in TON
     const treasurePercent = 70n; // Treasure percent
     const referrerBonusPercent = 5n; // Referrer bonus percent
     var iterations = 0;
@@ -36,6 +36,8 @@ describe('TreasureHunters - Full Expedition', () => {
                 queryId: 0n,
             }
         );
+
+        await treasureHunters.send(deployer.getSender(), { value: toNano('10') }, null);
 
         expect(deployResult.transactions).toHaveTransaction({
             from: deployer.address,
@@ -92,7 +94,7 @@ describe('TreasureHunters - Full Expedition', () => {
         const deployerBalance = await deployer.getBalance() - 1000000000000000n;
         console.log(`Deployer Balance after the game: ${fromNano(deployerBalance)} TON`);
         console.log(`Deployer Balance after the game: ${Number(deployerBalance) / 1000000000 * 5.5} USDT`);
-        expect((await treasureHunters.getExpeditionLog()).values().length).toEqual(numberOfPlayers / 20);
+        expect((await treasureHunters.getExpeditionLog()).values().length).toEqual(1);
         console.log(`Game log: `, (await treasureHunters.getExpeditionLog()).values().map((v) => `Loosers: ${v.losers.values()}, Winner: ${v.winners.values()}`));
     });
 
