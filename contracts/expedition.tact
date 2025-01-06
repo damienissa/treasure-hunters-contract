@@ -36,8 +36,8 @@ contract Expedition with Deployable, Ownable {
         let winners: map<Int, Winner> = self.getWinners(self.config, self.membersLength, self.members);
         send(SendParameters{
                 to: self.owner,
-                value: 0,
-                mode: SendRemainingValue,
+                value: (myBalance() - self.minTonsForStorage) - self.gasConsumption,
+                mode: SendRemainingBalance,
                 bounce: false,
                 body: ExpeditionResultInternal{winners: winners}.toCell()
             }

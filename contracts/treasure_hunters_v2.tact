@@ -5,12 +5,17 @@ import "./models.tact";
 import "./expedition.tact";
 
 contract TreasureHuntersV2 with Deployable, Ownable {
+    // Constants
+    const minTonsForStorage: Int = ton("0.01");
+    const gasConsumption: Int = ton("0.01");
+    // Variables
     owner: Address;
     config: Config;
     currentExpedition: Address?;
     currentExpeditionLength: Int;
     expeditionResultsLength: Int;
     expeditionResults: map<Int, ExpeditionResult>;
+    // Lifecycle
     init(config: Config){
         self.owner = context().sender;
         self.config = config;
@@ -19,9 +24,21 @@ contract TreasureHuntersV2 with Deployable, Ownable {
         self.expeditionResults = emptyMap();
     }
 
-    // Add initial balance of contract
-    receive(){
+    // Listeners
+    receive(msg: Withdraw){
         self.requireOwner();
+        let contractBalance: Int = myBalance();
+        let reservedFundsForClaim: Int = self.reservedFundsForClaim();
+        let toBeWithdrawn: Int = contractBalance - self.minTonsForStorage - self.gasConsumption - reservedFundsForClaim;
+        dump(contractBalance);
+        dump(reservedFundsForClaim);
+        dump(toBeWithdrawn);
+        send(SendParameters{
+                to: self.owner, 
+                value: toBeWithdrawn, 
+                bounce: false, 
+                mode: SendRemainingValue
+        });
     }
 
     receive(msg: ExpeditionResultInternal) {
@@ -37,12 +54,6 @@ contract TreasureHuntersV2 with Deployable, Ownable {
     receive(msg: BuyTicket){
         require(context().value >= self.config.ticketPrice, "Not enough funds");
         let sender = context().sender;
-        let referrer = msg.referrer;
-        if (referrer != null) {
-            let referrerBonus = (self.config.ticketPrice * self.config.referrerBonusPercent) / 100;
-            send(SendParameters{to: referrer!!, value: referrerBonus, bounce: true, body: "Referral bonus".asComment()});
-        }
-
         if (self.currentExpedition == null) {
             
             let address = self.startExpedition(sender);
@@ -50,8 +61,7 @@ contract TreasureHuntersV2 with Deployable, Ownable {
         } else {
              send(SendParameters{
                 to: self.currentExpedition!!, 
-                value: 0,
-                mode: SendRemainingValue, 
+                value: ton("1"),
                 bounce: false,
                 body: AddMemberInternal{
                     member: sender
@@ -60,25 +70,6 @@ contract TreasureHuntersV2 with Deployable, Ownable {
         }
 
         self.currentExpeditionLength += 1;
-    }
-
-    fun startExpedition(member: Address): Address {
-        let init: StateInit = initOf Expedition(self.expeditionResultsLength, self.config);
-        let expeditionAddress: Address = contractAddress(init);
-        
-        send(SendParameters{
-                to: expeditionAddress, 
-                value: 0,
-                mode: SendRemainingValue, 
-                bounce: false,
-                body: AddMemberInternal{
-                    member: member,
-                }.toCell(),
-                code: init.code,
-                data: init.data
-            });
-
-            return expeditionAddress;
     }
 
     receive(msg: Claim) {
@@ -92,24 +83,55 @@ contract TreasureHuntersV2 with Deployable, Ownable {
                 }
             }
         }
-
-        send(SendParameters{to: sender, bounce: true, value: toBeClaimed, mode: SendRemainingValue + SendIgnoreErrors});
+        send(SendParameters{
+                to: sender, 
+                bounce: true, 
+                value: toBeClaimed, 
+                mode: SendIgnoreErrors, 
+                body: "Claimed".asComment()
+                },
+            );
     }
 
-    get fun canBeClaimed(): Int {
-        let toBeClaimed: Int = 0;
+    fun reservedFundsForClaim(): Int {
+        let sum: Int = 0;
         foreach (index, expedition in self.expeditionResults) {
             foreach (i, winner in expedition.winners) {
-                if (winner.claimed == false && context().sender == winner.player) {
-                    toBeClaimed += winner.treasure;
+                if (winner.claimed == false) {
+                    sum += winner.treasure;
                 }
             }
         }
 
-        return toBeClaimed;
+        return sum;
     }
+
+
+    fun startExpedition(member: Address): Address {
+        let init: StateInit = initOf Expedition(self.expeditionResultsLength, self.config);
+        let expeditionAddress: Address = contractAddress(init);
+        
+        send(SendParameters{
+                to: expeditionAddress, 
+                value: ton("1"),
+                bounce: false,
+                body: AddMemberInternal{
+                    member: member,
+                }.toCell(),
+                code: init.code,
+                data: init.data
+            });
+
+            return expeditionAddress;
+    }
+
+    // Getters
 
     get fun expeditionHistory(): map<Int, ExpeditionResult> {
         return self.expeditionResults;
+    }
+
+    get fun contractBalance(): Int {
+        return myBalance();
     }
 }

@@ -1,4 +1,4 @@
-import { toNano } from '@ton/core';
+import { fromNano, toNano } from '@ton/core';
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import '@ton/test-utils';
 import { TreasureHuntersV2 } from '../wrappers/TreasureHuntersV2';
@@ -43,16 +43,12 @@ describe('TreasureHuntersV2', () => {
             success: true,
         });
 
-        await treasureHuntersV2.send(deployer.getSender(), { value: toNano('100') }, null);
-
         for (let i = 0; i < numberOfPlayers; i++) {
             players.push(await blockchain.treasury(`player_${i}_${iterations}`));
         }
     });
 
     it('should start game', async () => {
-
-        var counter = 0;
         for (const player of players) {
             const result = await treasureHuntersV2.send(player.getSender(), { value: ticketPrice }, { $$type: 'BuyTicket', referrer: null });
             expect(result.transactions).toHaveTransaction({
@@ -60,25 +56,37 @@ describe('TreasureHuntersV2', () => {
                 to: treasureHuntersV2.address,
                 success: true,
             });
-            counter++;
         }
 
         const history = await treasureHuntersV2.getExpeditionHistory();
-        console.log(history.values().map((x) => x.winners.values()));
         let listOfWinners = history.values().map((x) => x.winners.values());
         let winners = listOfWinners.flat();
-        for (const player of players) {
-            for (const winner of winners) {
-
-                if (player.address === winner.player) {
-                    console.log("Winner:", winner);
-                    console.log("Player:", player.address);
-
-                    expect(await player.getBalance()).toBeGreaterThan(0n);
-                    let claimResult = await treasureHuntersV2.send(player.getSender(), { value: 0n }, { $$type: 'Claim', });
-                    console.log(claimResult);
-                }
-            }
+        const wonPlayers = players.filter(player =>
+            winners.some(winner => winner.player.toString() === player.address.toString())
+        );
+        for (const winner of wonPlayers) {
+            const balanceBefore = await winner.getBalance();
+            const result = await treasureHuntersV2.send(winner.getSender(), { value: toNano("0.5") }, { $$type: 'Claim', });
+            expect(result.transactions).toHaveTransaction({
+                from: treasureHuntersV2.address,
+                to: winner.address,
+                success: true,
+            });
+            const balanceAfter = await winner.getBalance();
+            expect(balanceAfter).toBeGreaterThan(balanceBefore);
         }
+
+        const deployerBefore = await deployer.getBalance();
+        const result = await treasureHuntersV2.send(deployer.getSender(), { value: toNano("0.5") }, { $$type: 'Withdraw', });
+        expect(result.transactions).toHaveTransaction({
+            from: treasureHuntersV2.address,
+            to: deployer.address,
+            success: true,
+        });
+
+        const deployerAfter = await deployer.getBalance();
+
+        console.log("Delta:", fromNano(deployerAfter - deployerBefore));
+        console.log("Contract balance:", fromNano(await treasureHuntersV2.getContractBalance()));
     });
 });

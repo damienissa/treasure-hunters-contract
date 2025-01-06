@@ -21,3 +21,5 @@ mutates extends fun claim(self: Winner) {
     require(!self.claimed, "Already claimed");
     self.claimed = true;
 }
+message Withdraw {
+}
