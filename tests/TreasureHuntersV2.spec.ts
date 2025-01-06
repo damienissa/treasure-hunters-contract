@@ -65,5 +65,20 @@ describe('TreasureHuntersV2', () => {
 
         const history = await treasureHuntersV2.getExpeditionHistory();
         console.log(history.values().map((x) => x.winners.values()));
+        let listOfWinners = history.values().map((x) => x.winners.values());
+        let winners = listOfWinners.flat();
+        for (const player of players) {
+            for (const winner of winners) {
+
+                if (player.address === winner.player) {
+                    console.log("Winner:", winner);
+                    console.log("Player:", player.address);
+
+                    expect(await player.getBalance()).toBeGreaterThan(0n);
+                    let claimResult = await treasureHuntersV2.send(player.getSender(), { value: 0n }, { $$type: 'Claim', });
+                    console.log(claimResult);
+                }
+            }
+        }
     });
 });
