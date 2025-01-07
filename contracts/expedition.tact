@@ -39,7 +39,7 @@ contract Expedition with Deployable, Ownable {
                 value: (myBalance() - self.minTonsForStorage) - self.gasConsumption,
                 mode: SendRemainingBalance,
                 bounce: false,
-                body: ExpeditionResultInternal{winners: winners}.toCell()
+                body: ExpeditionResultInternal{winners: winners, address: myAddress()}.toCell()
             }
         );
     }
@@ -67,10 +67,10 @@ contract Expedition with Deployable, Ownable {
         let currentIndex: Int = 0;
         let treasure: Int = config.treasure();
         prizes.set(0, (treasure * 50) / 100);
-        prizes.set(1, (treasure * 30) / 100);
+        prizes.set(1, (treasure * 20) / 100);
         prizes.set(2, (treasure * 10) / 100);
-        prizes.set(3, (treasure * 7) / 100);
-        prizes.set(4, (treasure * 3) / 100);
+        prizes.set(3, (treasure * 10) / 100);
+        prizes.set(4, (treasure * 10) / 100);
         foreach (key, value in randomPlayers) {
             let winner: Winner = Winner{treasure: prizes.get(currentIndex)!!, player: value};
             winnerMap.set(currentIndex, winner);

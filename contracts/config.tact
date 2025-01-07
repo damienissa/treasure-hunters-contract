@@ -2,7 +2,6 @@ struct Config {
     numberOfPlayers: Int;
     ticketPrice: Int as coins;
     treasurePercent: Int as coins;
-    discountTicketPrice: Int as coins;
     referrerBonusPercent: Int;
 }
 

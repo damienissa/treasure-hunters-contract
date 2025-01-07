@@ -6,6 +6,7 @@ message AddMemberInternal {
     member: Address;
 }
 message ExpeditionResultInternal {
+    address: Address;
     winners: map<Int, Winner>;
 }
 message BuyTicket {
@@ -14,6 +15,7 @@ message BuyTicket {
 message Claim {
 }
 struct ExpeditionResult {
+    address: Address;
     winners: map<Int, Winner>;
 }
 message Withdraw {

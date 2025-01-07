@@ -1,16 +1,16 @@
 import { fromNano, toNano } from '@ton/core';
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import '@ton/test-utils';
-import { TreasureHuntersV2 } from '../wrappers/TreasureHuntersV2';
+import { TreasureHunters } from '../wrappers/TreasureHunters';
 
-describe('TreasureHuntersV2', () => {
+describe('TreasureHunters', () => {
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
     let referrer: SandboxContract<TreasuryContract>;
-    let treasureHuntersV2: SandboxContract<TreasureHuntersV2>;
+    let treasureHuntersV2: SandboxContract<TreasureHunters>;
     const players: SandboxContract<TreasuryContract>[] = [];
     const numberOfPlayers = 100; // Total players for the expedition
-    const playersPerExpedition = 20n; // Players per expedition
+    const playersPerExpedition = 10n; // Players per expedition
     const ticketPrice = toNano('10'); // Ticket price in TON
     const discountTicketPrice = toNano('9'); // Ticket price in TON
     const treasurePercent = 70n; // Treasure percent
@@ -21,14 +21,14 @@ describe('TreasureHuntersV2', () => {
     beforeEach(async () => {
         blockchain = await Blockchain.create();
 
-        treasureHuntersV2 = blockchain.openContract(await TreasureHuntersV2.fromInit({ $$type: 'Config', numberOfPlayers: playersPerExpedition, ticketPrice: ticketPrice, treasurePercent: treasurePercent, discountTicketPrice: discountTicketPrice, referrerBonusPercent: referrerBonusPercent, },),);
+        treasureHuntersV2 = blockchain.openContract(await TreasureHunters.fromInit({ $$type: 'Config', numberOfPlayers: playersPerExpedition, ticketPrice: ticketPrice, treasurePercent: treasurePercent, referrerBonusPercent: referrerBonusPercent, },),);
 
         deployer = await blockchain.treasury('deployer');
 
         const deployResult = await treasureHuntersV2.send(
             deployer.getSender(),
             {
-                value: toNano('1'),
+                value: toNano('0.5'),
             },
             {
                 $$type: 'Deploy',
@@ -66,6 +66,8 @@ describe('TreasureHuntersV2', () => {
         );
         for (const winner of wonPlayers) {
             const balanceBefore = await winner.getBalance();
+            const canBeClaimed = await treasureHuntersV2.getCanBeClaimed(winner.address);
+            console.log("Winner:", winner.address.toString(), "Can be claimed:", fromNano(canBeClaimed || 0), "TON");
             const result = await treasureHuntersV2.send(winner.getSender(), { value: toNano("0.5") }, { $$type: 'Claim', });
             expect(result.transactions).toHaveTransaction({
                 from: treasureHuntersV2.address,
@@ -75,6 +77,9 @@ describe('TreasureHuntersV2', () => {
             const balanceAfter = await winner.getBalance();
             expect(balanceAfter).toBeGreaterThan(balanceBefore);
         }
+
+        const canBeWithdrawn = await treasureHuntersV2.getAvailableForWithdraw();
+        console.log("Can be withdrawn:", fromNano(canBeWithdrawn || 0), "TON");
 
         const deployerBefore = await deployer.getBalance();
         const result = await treasureHuntersV2.send(deployer.getSender(), { value: toNano("0.5") }, { $$type: 'Withdraw', });

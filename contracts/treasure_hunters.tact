@@ -1,118 +1,127 @@
 import "@stdlib/deploy";
 import "@stdlib/ownable";
-import "./history.tact";
 import "./config.tact";
-import "./messages.tact";
-import "./current_expedition.tact";
+import "./models.tact";
+import "./expedition.tact";
 
 contract TreasureHunters with Deployable, Ownable {
+    // Constants
+    const minTonsForStorage: Int = ton("0.5");
+    const gasConsumption: Int = ton("0.01");
+    // Variables
     owner: Address;
     config: Config;
-    currentExpedition: CurrentExpedition;
-    historicalData: HistoricalData;
+    currentExpedition: Address?;
+    currentExpeditionLength: Int;
+    expeditionResultsLength: Int;
+    expeditionResults: map<Int, ExpeditionResult>;
+    toBeClaimed: map<Address, Int>; // Address -> to treasury
+    // Lifecycle
     init(config: Config){
         self.owner = context().sender;
-        self.historicalData = HistoricalData{
-            playedAtLeastOnce: emptyMap(),
-            expeditionLog: emptyMap(),
-            expeditionLogLength: 0
-        };
         self.config = config;
-        self.currentExpedition = CurrentExpedition{players: emptyMap(), playersLength: 0};
+        self.currentExpeditionLength = 0;
+        self.expeditionResultsLength = 0;
+        self.expeditionResults = emptyMap();
     }
 
     /// Add initial balance of contract
     receive(){
         self.requireOwner();
+
     }
 
-    receive(msg: BuyFirstTicketAfterReferral){
-        let messageContext = context();
-        require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
-        require(messageContext.value >= self.config.discountTicketPrice, "Not enough funds");
-        let referrer = msg.referrer;
-        let referrerBonus = (self.config.ticketPrice * self.config.referrerBonusPercent) / 100;
-        send(SendParameters{to: referrer, value: referrerBonus, bounce: true, body: "Referral bonus".asComment()});
-        self.processTicket();
+    // Listeners
+    receive(msg: Withdraw){
+        self.requireOwner();
+        let toBeWithdrawn: Int = self.canBeWithdrawn();
+        send(SendParameters{to: self.owner, value: toBeWithdrawn, bounce: false, mode: SendRemainingValue});
+    }
+
+     receive(msg: Claim){
+        let sender = context().sender;
+        require(self.toBeClaimed.exists(sender), "Only winner can claim");
+        let value: Int = self.toBeClaimed.get(sender)!!;
+        send(SendParameters{to: sender, bounce: true, value: value, mode: SendIgnoreErrors, body: "Claimed".asComment()}
+        );
+        self.toBeClaimed.del(sender);
     }
 
     receive(msg: BuyTicket){
-        let messageContext = context();
-        require(self.currentExpedition.playersLength < self.config.numberOfPlayers, "Expedition is full");
-        require(messageContext.value >= self.config.ticketPrice, "Not enough funds");
-        self.processTicket();
+        require(context().value >= self.config.ticketPrice, "Not enough funds");
+        let sender = context().sender;
+        if (self.currentExpedition == null) {
+            let address = self.startExpedition(sender);
+            self.currentExpedition = address;
+        } else {
+
+            send(SendParameters{
+                    to: self.currentExpedition!!,
+                    value: self.minTonsForStorage,
+                    bounce: false,
+                    body: AddMemberInternal{member: sender}.toCell()
+                }
+            );
+        }
+        self.currentExpeditionLength += 1;
     }
 
-    receive(msg: Withdraw){
-        self.requireOwner();
-        send(SendParameters{to: self.owner, value: myBalance() - ton("1"), bounce: false});
+    receive(msg: ExpeditionResultInternal){
+        let expeditionResult: ExpeditionResult = ExpeditionResult{winners: msg.winners, address: msg.address};
+        foreach (index, winner in expeditionResult.winners) {
+            self.toBeClaimed.set(winner.player, winner.treasure);
+        }
+        self.expeditionResults.set(self.expeditionResultsLength, expeditionResult);
+        self.expeditionResultsLength += 1;
+        self.currentExpedition = null;
+        self.currentExpeditionLength = 0;
     }
 
-    get fun expeditionLog(): map<Int, ExpeditionHistory> {
-        return self.historicalData.expeditionLog;
+    fun reservedFundsForClaim(): Int {
+        let sum: Int = 0;
+        foreach (address, treasury in self.toBeClaimed) {
+            sum += treasury;
+        }
+        return sum;
+    }
+
+    fun startExpedition(member: Address): Address {
+        let init: StateInit = initOf Expedition(self.expeditionResultsLength, self.config);
+        let expeditionAddress: Address = contractAddress(init);
+        send(SendParameters{
+                to: expeditionAddress,
+                value: self.minTonsForStorage,
+                bounce: false,
+                body: AddMemberInternal{member: member}.toCell(),
+                code: init.code,
+                data: init.data
+            }
+        );
+        return expeditionAddress;
+    }
+
+    fun canBeWithdrawn(): Int {
+        let contractBalance: Int = myBalance();
+        let reservedFundsForClaim: Int = self.reservedFundsForClaim();
+        let currentGameExpenses = self.currentExpeditionLength * self.config.ticketPrice;
+        return contractBalance - self.minTonsForStorage - self.gasConsumption - reservedFundsForClaim - currentGameExpenses;
+    }
+
+    // Getters
+
+    get fun expeditionHistory(): map<Int, ExpeditionResult> {
+        return self.expeditionResults;
     }
 
     get fun contractBalance(): Int {
         return myBalance();
     }
 
-    get fun numberOfCurrentPlayers(): Int {
-        return self.currentExpedition.playersLength;
+    get fun availableForWithdraw(): Int {
+        return self.canBeWithdrawn();
     }
 
-    fun processTicket() {
-        let sender = context().sender;
-        self.historicalData.savePlayerPlayedAtLeastOnce(sender);
-        self.currentExpedition.addPlayer(sender);
-        if (self.currentExpedition.playersLength == self.config.numberOfPlayers) {
-            let winners = self.getWinners();
-            foreach (address, prize in winners) {
-                send(SendParameters{
-                        to: address,
-                        bounce: true,
-                        value: prize,
-                        mode: SendRemainingValue + SendIgnoreErrors
-                    }
-                );
-            }
-            self.currentExpedition = CurrentExpedition{players: emptyMap(), playersLength: 0};
-        }
-    }
-
-    fun selectRandomPlayers(count: Int): map<Int, Address> {
-        let copyLength: Int = self.currentExpedition.playersLength;
-        let copyPlayers: map<Int, Address> = self.currentExpedition.players;
-        let selectedPlayers: map<Int, Address> = emptyMap();
-        let selectedCount: Int = 0;
-        while (selectedCount < count) {
-            let randomKey: Int = random(0, copyLength);
-            if (copyPlayers.exists(randomKey)) {
-                let address: Address = copyPlayers.get(randomKey)!!;
-                selectedPlayers.set(selectedCount, address);
-                selectedCount += 1;
-                copyPlayers.del(randomKey);
-                copyLength -= 1;
-            }
-        }
-        self.historicalData.saveToHistory(selectedPlayers, copyPlayers);
-        return selectedPlayers;
-    }
-
-    fun getWinners(): map<Address, Int> {
-        let winnerMap: map<Address, Int> = emptyMap();
-        let randomPlayers: map<Int, Address> = self.selectRandomPlayers(5);
-        let prizes: map<Int, Int> = emptyMap();
-        let currentIndex: Int = 0;
-        let treasure = self.config.treasure();
-        prizes.set(0, (treasure * 50) / 100);
-        prizes.set(1, (treasure * 30) / 100);
-        prizes.set(2, (treasure * 10) / 100);
-        prizes.set(3, (treasure * 7) / 100);
-        prizes.set(4, (treasure * 3) / 100);
-        foreach (key, value in randomPlayers) {
-            winnerMap.set(value, prizes.get(currentIndex)!!);
-            currentIndex += 1;
-        }
-        return winnerMap;
+    get fun canBeClaimed(address: Address): Int? {
+        return self.toBeClaimed.get(address);
     }
 }
