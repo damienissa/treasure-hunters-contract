@@ -88,7 +88,3 @@ Provide your wallet address as a referrer when someone buys a ticket. You’ll e
 ### What happens if I don’t claim my reward?
 
 Rewards remain in the contract until claimed by the winner.
-
----
-
-This document covers the external methods available in the **Treasure Hunters** contract. If you have any questions, feel free to reach out to the technical team for further clarification.
