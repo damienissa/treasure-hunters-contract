@@ -12,7 +12,7 @@ describe('TreasureHunters', () => {
 
     const numberOfPlayers = 100; // Total players for the expedition
     const playersPerExpedition = 10n; // Players per expedition
-    const ticketPrice = toNano('10'); // Ticket price in TON
+    const ticketPrice = toNano('5'); // Ticket price in TON
     const discountTicketPrice = toNano('9'); // Ticket price in TON
     const treasurePercent = 70n; // Treasure percent
     const referrerBonusPercent = 5n; // Referrer bonus percent

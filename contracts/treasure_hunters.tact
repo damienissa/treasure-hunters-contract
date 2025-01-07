@@ -17,6 +17,7 @@ contract TreasureHunters with Deployable, Ownable {
     expeditionResults: map<Int, ExpeditionResult>;
     toBeClaimed: map<Address, Int>; // Address -> to treasury
     referralBonus: map<Address, Int>; // Address -> to treasury
+    oncePlayed: map<Address, Bool>;
     // Lifecycle
     init(config: Config){
         self.owner = context().sender;
@@ -25,6 +26,7 @@ contract TreasureHunters with Deployable, Ownable {
         self.expeditionResultsLength = 0;
         self.expeditionResults = emptyMap();
         self.referralBonus = emptyMap();
+        self.oncePlayed = emptyMap();
     }
 
     /// Add initial balance of contract
@@ -51,14 +53,18 @@ contract TreasureHunters with Deployable, Ownable {
 
     receive(msg: BuyTicket){
         require(context().value >= self.config.ticketPrice, "Not enough funds");
-        if (msg.referrer != null) {
-            let referrerBonus: Int = (self.config.ticketPrice * self.config.referrerBonusPercent) / 100;
-            if (self.referralBonus.exists(msg.referrer!!)) {
-                self.referralBonus.set(msg.referrer!!, self.referralBonus.get(msg.referrer!!)!! + referrerBonus);
-            } else {
-                self.referralBonus.set(msg.referrer!!, referrerBonus);
+        if (!self.oncePlayed.exists(context().sender)) {
+            if (msg.referrer != null) {
+                let referrerBonus: Int = (self.config.ticketPrice * self.config.referrerBonusPercent) / 100;
+                if (self.referralBonus.exists(msg.referrer!!)) {
+                    self.referralBonus.set(msg.referrer!!, self.referralBonus.get(msg.referrer!!)!! + referrerBonus);
+                } else {
+                    self.referralBonus.set(msg.referrer!!, referrerBonus);
+                }
+                self.oncePlayed.set(context().sender, true);
             }
         }
+       
         let sender = context().sender;
         if (self.currentExpedition == null) {
             let address = self.startExpedition(sender);
