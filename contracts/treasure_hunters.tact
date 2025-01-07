@@ -16,6 +16,7 @@ contract TreasureHunters with Deployable, Ownable {
     expeditionResultsLength: Int;
     expeditionResults: map<Int, ExpeditionResult>;
     toBeClaimed: map<Address, Int>; // Address -> to treasury
+    referralBonus: map<Address, Int>; // Address -> to treasury
     // Lifecycle
     init(config: Config){
         self.owner = context().sender;
@@ -23,6 +24,7 @@ contract TreasureHunters with Deployable, Ownable {
         self.currentExpeditionLength = 0;
         self.expeditionResultsLength = 0;
         self.expeditionResults = emptyMap();
+        self.referralBonus = emptyMap();
     }
 
     /// Add initial balance of contract
@@ -49,6 +51,14 @@ contract TreasureHunters with Deployable, Ownable {
 
     receive(msg: BuyTicket){
         require(context().value >= self.config.ticketPrice, "Not enough funds");
+        if (msg.referrer != null) {
+            let referrerBonus: Int = (self.config.ticketPrice * self.config.referrerBonusPercent) / 100;
+            if (self.referralBonus.exists(msg.referrer!!)) {
+                self.referralBonus.set(msg.referrer!!, self.referralBonus.get(msg.referrer!!)!! + referrerBonus);
+            } else {
+                self.referralBonus.set(msg.referrer!!, referrerBonus);
+            }
+        }
         let sender = context().sender;
         if (self.currentExpedition == null) {
             let address = self.startExpedition(sender);
@@ -77,9 +87,25 @@ contract TreasureHunters with Deployable, Ownable {
         self.currentExpeditionLength = 0;
     }
 
+    receive(msg: RequestReferralBonus){
+        require(self.referralBonus.exists(context().sender), "You have no referral bonus");
+        let value: Int = self.referralBonus.get(context().sender)!!;
+        send(SendParameters{to: context().sender, bounce: true, value: value, mode: SendIgnoreErrors, body: "Referral bonus".asComment()}
+        );
+        self.referralBonus.del(context().sender);
+    }
+
     fun reservedFundsForClaim(): Int {
         let sum: Int = 0;
         foreach (address, treasury in self.toBeClaimed) {
+            sum += treasury;
+        }
+        return sum;
+    }
+
+    fun reservedFundsForReferralBonus(): Int {
+        let sum: Int = 0;
+        foreach (address, treasury in self.referralBonus) {
             sum += treasury;
         }
         return sum;
@@ -103,8 +129,9 @@ contract TreasureHunters with Deployable, Ownable {
     fun canBeWithdrawn(): Int {
         let contractBalance: Int = myBalance();
         let reservedFundsForClaim: Int = self.reservedFundsForClaim();
+        let reservedFundsForReferralBonus: Int = self.reservedFundsForReferralBonus();
         let currentGameExpenses = self.currentExpeditionLength * self.config.ticketPrice;
-        return contractBalance - self.minTonsForStorage - self.gasConsumption - reservedFundsForClaim - currentGameExpenses;
+        return contractBalance - self.minTonsForStorage - self.gasConsumption - reservedFundsForClaim - currentGameExpenses - reservedFundsForReferralBonus;
     }
 
     // Getters
@@ -123,5 +150,9 @@ contract TreasureHunters with Deployable, Ownable {
 
     get fun canBeClaimed(address: Address): Int? {
         return self.toBeClaimed.get(address);
+    }
+
+    get fun referralBonusBalance(address: Address): Int? {
+        return self.referralBonus.get(address);
     }
 }

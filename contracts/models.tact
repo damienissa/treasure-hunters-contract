@@ -18,5 +18,6 @@ struct ExpeditionResult {
     address: Address;
     winners: map<Int, Winner>;
 }
-message Withdraw {
-}
+message Withdraw { }
+
+message RequestReferralBonus { }
